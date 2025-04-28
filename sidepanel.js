@@ -5,6 +5,7 @@
  * 1. Communication with the background service worker
  * 2. Loading the DeepWiki content in an iframe
  * 3. Error handling and UI updates
+ * 4. Responding to GitHub repository navigation changes
  */
 
 // DOM elements
@@ -12,13 +13,23 @@ const loadingElement = document.getElementById('loading');
 const errorElement = document.getElementById('error');
 const iframeElement = document.getElementById('deepwiki-frame');
 
+// Track the current loaded URL to avoid unnecessary reloads
+let currentLoadedUrl = null;
+
 /**
  * Loads a DeepWiki URL in the iframe
  * @param {string} url - The DeepWiki URL to load
  */
 function loadDeepWikiUrl(url) {
   try {
+    // If the URL is the same as currently loaded, don't reload
+    if (url === currentLoadedUrl && iframeElement.style.display === 'block') {
+      console.log(`URL ${url} is already loaded, skipping reload`);
+      return;
+    }
+    
     console.log(`Loading DeepWiki URL: ${url}`);
+    currentLoadedUrl = url;
     
     // Show loading indicator
     loadingElement.style.display = 'flex';
@@ -69,11 +80,22 @@ document.addEventListener('DOMContentLoaded', () => {
       showError('No DeepWiki URL available. Please navigate to a GitHub repository and click the extension icon again.');
     }
   });
+  
+  // Set up a periodic check for URL updates (as a fallback)
+  setInterval(() => {
+    chrome.runtime.sendMessage({ action: 'getDeepWikiUrl' }, (response) => {
+      if (response && response.url && response.url !== currentLoadedUrl) {
+        console.log('Detected URL change from periodic check');
+        loadDeepWikiUrl(response.url);
+      }
+    });
+  }, 5000);
 });
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'loadDeepWikiUrl' && message.url) {
+    console.log('Received message to load new URL:', message.url);
     loadDeepWikiUrl(message.url);
   }
 });

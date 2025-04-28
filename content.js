@@ -5,6 +5,7 @@
  * 1. Verifies the current page is a GitHub repository
  * 2. Extracts repository information
  * 3. Communicates with the background service worker
+ * 4. Detects navigation to new GitHub repositories
  */
 
 // Function to extract repository owner and name from the current URL
@@ -40,9 +41,16 @@ function sendRepoInfoToBackground() {
   const repoInfo = extractRepoInfo();
   
   if (repoInfo) {
+    // Construct DeepWiki URL
+    const deepWikiUrl = `https://deepwiki.com/${repoInfo.owner}/${repoInfo.name}`;
+    
     chrome.runtime.sendMessage({
-      action: 'repoInfo',
-      data: repoInfo
+      action: 'updateDeepWikiUrl',
+      data: {
+        repoInfo: repoInfo,
+        deepWikiUrl: deepWikiUrl,
+        githubUrl: window.location.href
+      }
     });
     
     console.log(`Sent repository info to background: ${repoInfo.owner}/${repoInfo.name}`);
@@ -61,12 +69,28 @@ function sendRepoInfoToBackground() {
   const observer = new MutationObserver(() => {
     if (window.location.href !== lastUrl) {
       lastUrl = window.location.href;
-      sendRepoInfoToBackground();
+      console.log('URL changed, updating repository information');
+      setTimeout(sendRepoInfoToBackground, 500); // Small delay to ensure page has loaded
     }
   });
   
   // Start observing the document with the configured parameters
   observer.observe(document, { subtree: true, childList: true });
+  
+  // Also listen for history state changes (pushState/replaceState)
+  window.addEventListener('popstate', () => {
+    console.log('History state changed, updating repository information');
+    setTimeout(sendRepoInfoToBackground, 500);
+  });
+  
+  // Check for URL changes periodically as a fallback
+  setInterval(() => {
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href;
+      console.log('URL changed (interval check), updating repository information');
+      sendRepoInfoToBackground();
+    }
+  }, 2000);
   
   console.log('GitHub DeepWiki Sidebar content script initialized');
 })();
